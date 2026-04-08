@@ -4,7 +4,7 @@
 # https://github.com/GodSpoon/dns-bench
 #
 # Usage:
-#   curl -sSL https://raw.githubusercontent.com/GodSpoon/dns-bench/main/dns-bench.sh | bash
+#   curl -sSL https://raw.githubusercontent.com/GodSpoon/dns-bench/main/dns-bench.sh -o dns-bench.sh && bash dns-bench.sh
 #   bash dns-bench.sh [--queries N] [--domains FILE] [--timeout N] [--jobs N] [--no-color] [--help]
 
 set -euo pipefail
@@ -145,7 +145,7 @@ install_deps() {
         case "$cmd" in
           dig) brew install --quiet bind 2>/dev/null || true ;;
           bc)  brew install --quiet bc 2>/dev/null || true ;;
-          *)   ;; # awk and sort are part of coreutils on macOS
+          *)   ;; # awk and sort are typically pre-installed on macOS
         esac
       done
       ;;
@@ -370,8 +370,13 @@ run_benchmark() {
     running=$((running + 1))
 
     if (( running >= MAX_JOBS )); then
-      wait -n 2>/dev/null || wait
-      running=$((running - 1))
+      # wait -n (bash 4.3+) waits for any single job; fallback waits for all
+      if ! wait -n 2>/dev/null; then
+        wait
+        running=0
+      else
+        running=$((running - 1))
+      fi
     fi
   done
   wait
@@ -459,7 +464,7 @@ display_results() {
     if (( lat >= 9999 )); then lat_display="TIMEOUT"; fi
     echo -e "    ${medal_icons[$i]} ${BLD}${medals[$i]}${RST}  ${BLD}${WHT}${names[$i]}${RST}"
     echo -ne "         "
-    render_bar "$((max_lat - lat + 1))" "$max_lat" 30 "${GRN}"
+    render_bar "$lat" "$max_lat" 30 "${GRN}"
     echo -e "  ${BLD}${lat_display}${RST}  ${GRY}(${reliabilities[$i]}% reliable)${RST}"
     echo
   done

@@ -7,7 +7,8 @@ Fast DNS provider benchmarking from your terminal. Like [Ookla Speedtest](https:
 ## Quick Start
 
 ```sh
-curl -sSL https://raw.githubusercontent.com/GodSpoon/dns-bench/main/dns-bench.sh | bash
+curl -sSL https://raw.githubusercontent.com/GodSpoon/dns-bench/main/dns-bench.sh -o dns-bench.sh
+bash dns-bench.sh
 ```
 
 ## What It Does
@@ -42,7 +43,7 @@ bash dns-bench.sh -d my-domains.txt
 
 ## Requirements
 
-- **bash** 4.0+
+- **bash** 4.3+
 - **dig** (auto-installed if missing)
 - **bc**, **awk**, **sort** (standard on most systems)
 
