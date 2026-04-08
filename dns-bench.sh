@@ -15,7 +15,7 @@ DOMAINS_FILE=""
 TIMEOUT=2
 MAX_JOBS=10
 COLOR=true
-VERSION="1.0.0"
+VERSION="2.0.0"
 
 # ── Parse Arguments ───────────────────────────────────────────────────────────
 usage() {
@@ -114,9 +114,10 @@ detect_os() {
   local uname_out
   uname_out="$(uname -s)"
   case "$uname_out" in
-    Linux*)  OS="linux" ;;
-    Darwin*) OS="macos" ;;
-    *)       OS="unknown" ;;
+    Linux*)   OS="linux" ;;
+    Darwin*)  OS="macos" ;;
+    CYGWIN*|MINGW*|MSYS*) OS="windows" ;;
+    *)        OS="unknown" ;;
   esac
 }
 
@@ -188,6 +189,7 @@ install_deps() {
       ;;
     *)
       echo -e "${RED}${CROSS} Unsupported OS. Please install: ${missing[*]}${RST}" >&2
+      echo -e "${RED}  On Windows, consider using WSL or Git Bash with dig installed.${RST}" >&2
       exit 1
       ;;
   esac
@@ -200,6 +202,15 @@ install_deps() {
     fi
   done
   echo -e "${GRN}${CHECK} Dependencies installed${RST}"
+}
+
+# ── IPv6 Connectivity Check ──────────────────────────────────────────────────
+HAS_IPV6=false
+check_ipv6() {
+  # Try a quick DNS query over IPv6 to Google's public DNS
+  if dig +time=1 +tries=1 @2001:4860:4860::8888 google.com A >/dev/null 2>&1; then
+    HAS_IPV6=true
+  fi
 }
 
 # ── Domains ───────────────────────────────────────────────────────────────────
@@ -237,29 +248,128 @@ else
 fi
 
 # ── DNS Providers ─────────────────────────────────────────────────────────────
-# Format: "Name|IP1,IP2"
+# Format: "Name|IPv4_1,IPv4_2|IPv6_1,IPv6_2"
+# Source: https://adguard-dns.io/kb/general/dns-providers/
 declare -a PROVIDERS=(
-  # Major public resolvers
-  "Cloudflare|1.1.1.1,1.0.0.1"
-  "Google|8.8.8.8,8.8.4.4"
-  "Quad9|9.9.9.9,149.112.112.112"
-  "OpenDNS|208.67.222.222,208.67.220.220"
-  "NextDNS|45.90.28.0,45.90.30.0"
-  "AdGuard|94.140.14.14,94.140.15.15"
-  "CleanBrowsing|185.228.168.9,185.228.169.9"
-  "Comodo Secure|8.26.56.26,8.20.247.20"
-  "ControlD|76.76.2.0,76.76.10.0"
-  "Level3|4.2.2.1,4.2.2.2"
-  "Verisign|64.6.64.6,64.6.65.6"
-  "DNS.Watch|84.200.69.80,84.200.70.40"
-  "Yandex|77.88.8.8,77.88.8.1"
-  "Neustar|156.154.70.5,156.154.71.5"
-  "SafeDNS|195.46.39.39,195.46.39.40"
-  "LibreDNS|116.202.176.26"
-  "Freenom|80.80.80.80,80.80.81.81"
-  "AliDNS|223.5.5.5,223.6.6.6"
-  "Mullvad|194.242.2.2"
-  "DNS0.eu|193.110.81.0,185.253.5.0"
+  # ── AdGuard DNS ──────────────────────────────────────────────
+  "AdGuard Default|94.140.14.14,94.140.15.15|2a10:50c0::ad1:ff,2a10:50c0::ad2:ff"
+  "AdGuard Family|94.140.14.15,94.140.15.16|2a10:50c0::bad1:ff,2a10:50c0::bad2:ff"
+  "AdGuard Non-filter|94.140.14.140,94.140.14.141|2a10:50c0::1:ff,2a10:50c0::2:ff"
+  # ── Google DNS ───────────────────────────────────────────────
+  "Google|8.8.8.8,8.8.4.4|2001:4860:4860::8888,2001:4860:4860::8844"
+  # ── Cloudflare DNS ───────────────────────────────────────────
+  "Cloudflare|1.1.1.1,1.0.0.1|2606:4700:4700::1111,2606:4700:4700::1001"
+  "Cloudflare Malware|1.1.1.2,1.0.0.2|2606:4700:4700::1112,2606:4700:4700::1002"
+  "Cloudflare Family|1.1.1.3,1.0.0.3|2606:4700:4700::1113,2606:4700:4700::1003"
+  # ── Quad9 DNS ────────────────────────────────────────────────
+  "Quad9|9.9.9.9,149.112.112.112|2620:fe::fe,2620:fe::fe:9"
+  "Quad9 Unsecured|9.9.9.10,149.112.112.10|2620:fe::10,2620:fe::fe:10"
+  "Quad9 ECS|9.9.9.11,149.112.112.11|2620:fe::11,2620:fe::fe:11"
+  # ── OpenDNS (Cisco) ─────────────────────────────────────────
+  "OpenDNS|208.67.222.222,208.67.220.220|2620:119:35::35,2620:119:53::53"
+  "OpenDNS Family|208.67.222.123,208.67.220.123|"
+  # ── Yandex DNS ───────────────────────────────────────────────
+  "Yandex Basic|77.88.8.8,77.88.8.1|2a02:6b8::feed:0ff,2a02:6b8:0:1::feed:0ff"
+  "Yandex Safe|77.88.8.88,77.88.8.2|2a02:6b8::feed:bad,2a02:6b8:0:1::feed:bad"
+  "Yandex Family|77.88.8.3,77.88.8.7|2a02:6b8::feed:a11,2a02:6b8:0:1::feed:a11"
+  # ── CleanBrowsing ────────────────────────────────────────────
+  "CleanBrowsing Family|185.228.168.168,185.228.169.168|2a0d:2a00:1::,2a0d:2a00:2::"
+  "CleanBrowsing Adult|185.228.168.10,185.228.169.11|2a0d:2a00:1::1,2a0d:2a00:2::1"
+  "CleanBrowsing Security|185.228.168.9,185.228.169.9|2a0d:2a00:1::2,2a0d:2a00:2::2"
+  # ── Comodo Secure DNS ────────────────────────────────────────
+  "Comodo Secure|8.26.56.26,8.20.247.20|"
+  # ── Neustar UltraDNS ────────────────────────────────────────
+  "Neustar R&P 1|156.154.70.1,156.154.71.1|2610:a1:1018::1,2610:a1:1019::1"
+  "Neustar R&P 2|156.154.70.5,156.154.71.5|2610:a1:1018::5,2610:a1:1019::5"
+  "Neustar Threat|156.154.70.2,156.154.71.2|2610:a1:1018::2,2610:a1:1019::2"
+  "Neustar Family|156.154.70.3,156.154.71.3|2610:a1:1018::3,2610:a1:1019::3"
+  "Neustar Business|156.154.70.4,156.154.71.4|2610:a1:1018::4,2610:a1:1019::4"
+  # ── Verisign Public DNS ──────────────────────────────────────
+  "Verisign|64.6.64.6,64.6.65.6|2620:74:1b::1:1,2620:74:1c::2:2"
+  # ── Level3 DNS ───────────────────────────────────────────────
+  "Level3|4.2.2.1,4.2.2.2|"
+  # ── SWITCH DNS ───────────────────────────────────────────────
+  "SWITCH|130.59.31.248|2001:620:0:ff::2"
+  # ── Dyn DNS ──────────────────────────────────────────────────
+  "Dyn|216.146.35.35,216.146.36.36|"
+  # ── DNS.WATCH ────────────────────────────────────────────────
+  "DNS.WATCH|84.200.69.80,84.200.70.40|2001:1608:10:25::1c04:b12f,2001:1608:10:25::9249:d69b"
+  # ── SkyDNS ───────────────────────────────────────────────────
+  "SkyDNS|193.58.251.251|"
+  # ── Comss.ru DNS ─────────────────────────────────────────────
+  "Comss.ru West|92.38.152.163,93.115.24.204|2a03:90c0:56::1a5,2a02:7b40:5eb0:e95d::1"
+  "Comss.ru East|92.223.109.31,91.230.211.67|2a03:90c0:b5::1a,2a04:2fc0:39::47"
+  # ── SafeDNS ──────────────────────────────────────────────────
+  "SafeDNS|195.46.39.39,195.46.39.40|"
+  # ── CIRA Canadian Shield ─────────────────────────────────────
+  "CIRA Private|149.112.121.10,149.112.122.10|2620:10A:80BB::10,2620:10A:80BC::10"
+  "CIRA Protected|149.112.121.20,149.112.122.20|2620:10A:80BB::20,2620:10A:80BC::20"
+  "CIRA Family|149.112.121.30,149.112.122.30|2620:10A:80BB::30,2620:10A:80BC::30"
+  # ── OpenNIC DNS ──────────────────────────────────────────────
+  "OpenNIC|185.121.177.177,169.239.202.202|2a05:dfc7:5::53,2a05:dfc7:5353::53"
+  # ── DNS for Family ───────────────────────────────────────────
+  "DNS for Family|94.130.180.225,78.47.64.161|2a01:4f8:1c0c:40db::1,2a01:4f8:1c17:4df8::1"
+  # ── CZ.NIC ODVR ─────────────────────────────────────────────
+  "CZ.NIC ODVR|193.17.47.1,185.43.135.1|2001:148f:ffff::1,2001:148f:fffe::1"
+  # ── Ali DNS ──────────────────────────────────────────────────
+  "AliDNS|223.5.5.5,223.6.6.6|2400:3200::1,2400:3200:baba::1"
+  # ── CFIEC Public DNS (IPv6 only) ─────────────────────────────
+  "CFIEC||240C::6666,240C::6644"
+  # ── Nawala Childprotection ───────────────────────────────────
+  "Nawala|180.131.144.144,180.131.145.145|"
+  # ── DNSCEPAT ─────────────────────────────────────────────────
+  "DNSCEPAT Asia|172.105.216.54|2400:8902::f03c:92ff:fe09:48cc"
+  "DNSCEPAT Europe|5.2.75.231|2a04:52c0:101:98d::"
+  # ── 360 Secure DNS ───────────────────────────────────────────
+  "360 Secure|101.226.4.6,218.30.118.6|"
+  # ── DNSPod ───────────────────────────────────────────────────
+  "DNSPod|119.29.29.29,119.28.28.28|"
+  # ── 114DNS ───────────────────────────────────────────────────
+  "114DNS|114.114.114.114,114.114.115.115|"
+  # ── Quad101 ──────────────────────────────────────────────────
+  "Quad101|101.101.101.101,101.102.103.104|2001:de4::101,2001:de4::102"
+  # ── OneDNS ───────────────────────────────────────────────────
+  "OneDNS Pure|117.50.10.10,52.80.52.52|"
+  "OneDNS Block|117.50.11.11,52.80.66.66|"
+  # ── Privacy-First DNS ────────────────────────────────────────
+  "Privacy-First SG|174.138.21.128|2400:6180:0:d0::5f6e:4001"
+  "Privacy-First JP|172.104.93.80|2400:8902::f03c:91ff:feda:c514"
+  # ── FreeDNS ──────────────────────────────────────────────────
+  "FreeDNS|172.104.237.57,172.104.49.100|"
+  # ── Freenom World ────────────────────────────────────────────
+  "Freenom World|80.80.80.80,80.80.81.81|"
+  # ── OSZX DNS ─────────────────────────────────────────────────
+  "OSZX|51.38.83.141|2001:41d0:801:2000::d64"
+  "PumpleX|51.38.82.198|2001:41d0:801:2000::1b28"
+  # ── Strongarm DNS ────────────────────────────────────────────
+  "Strongarm|54.174.40.213,52.3.100.184|"
+  # ── SafeSurfer DNS ───────────────────────────────────────────
+  "SafeSurfer|104.155.237.225,104.197.28.121|"
+  # ── DNS.SB ───────────────────────────────────────────────────
+  "DNS.SB|185.222.222.222,45.11.45.11|2a09::,2a11::"
+  # ── DNS Forge ────────────────────────────────────────────────
+  "DNS Forge|176.9.93.198,176.9.1.117|2a01:4f8:151:34aa::198,2a01:4f8:141:316d::117"
+  # ── LibreDNS ─────────────────────────────────────────────────
+  "LibreDNS|88.198.92.222|"
+  # ── AhaDNS ───────────────────────────────────────────────────
+  "AhaDNS NL|5.2.75.75|2a04:52c0:101:75::75"
+  "AhaDNS India|45.79.120.233|2400:8904:e001:43::43"
+  "AhaDNS LA|45.67.219.208|2a04:bdc7:100:70::70"
+  "AhaDNS NY|185.213.26.187|2a0d:5600:33:3::3"
+  # ── Seby DNS ─────────────────────────────────────────────────
+  "Seby|45.76.113.31|"
+  # ── puntCAT DNS ──────────────────────────────────────────────
+  "puntCAT|109.69.8.51|2a00:1508:0:4::9"
+  # ── DNSlify DNS ──────────────────────────────────────────────
+  "DNSlify|185.235.81.1,185.235.81.2|2a0d:4d00:81::1,2a0d:4d00:81::2"
+  # ── NextDNS ──────────────────────────────────────────────────
+  "NextDNS|45.90.28.0,45.90.30.0|"
+  # ── ControlD DNS ─────────────────────────────────────────────
+  "ControlD|76.76.2.0,76.76.10.0|"
+  # ── Mullvad DNS ──────────────────────────────────────────────
+  "Mullvad|194.242.2.2|"
+  # ── DNS0.eu ──────────────────────────────────────────────────
+  "DNS0.eu|193.110.81.0,185.253.5.0|"
 )
 
 PROVIDER_COUNT=${#PROVIDERS[@]}
@@ -288,29 +398,44 @@ query_domain() {
 # Benchmark a single provider (all domains), write result to file
 bench_provider() {
   local idx="$1" entry="$2" result_file="$3"
-  IFS='|' read -r name ips_csv <<< "$entry"
-  IFS=',' read -r -a ips <<< "$ips_csv"
+  IFS='|' read -r name ipv4_csv ipv6_csv <<< "$entry"
+
+  # Build list of IPs to test
+  local -a ips=()
+  if [[ -n "$ipv4_csv" ]]; then
+    IFS=',' read -r -a ipv4s <<< "$ipv4_csv"
+    for ip in "${ipv4s[@]}"; do [[ -n "$ip" ]] && ips+=("$ip"); done
+  fi
+  if [[ "$HAS_IPV6" == "true" && -n "$ipv6_csv" ]]; then
+    IFS=',' read -r -a ipv6s <<< "$ipv6_csv"
+    for ip in "${ipv6s[@]}"; do [[ -n "$ip" ]] && ips+=("$ip"); done
+  fi
 
   local total_latency=0 resolved=0 failed=0
 
-  for domain in "${DOMAINS[@]}"; do
-    local best=""
-    for ip in "${ips[@]}"; do
-      local result
-      result=$(query_domain "$ip" "$domain" "$QUERIES")
-      if [[ "$result" != "FAIL" ]]; then
-        if [[ -z "$best" ]] || (( result < best )); then
-          best="$result"
+  if [[ ${#ips[@]} -eq 0 ]]; then
+    # No testable IPs (e.g., IPv6-only provider without IPv6 connectivity)
+    failed=${#DOMAINS[@]}
+  else
+    for domain in "${DOMAINS[@]}"; do
+      local best=""
+      for ip in "${ips[@]}"; do
+        local result
+        result=$(query_domain "$ip" "$domain" "$QUERIES")
+        if [[ "$result" != "FAIL" ]]; then
+          if [[ -z "$best" ]] || (( result < best )); then
+            best="$result"
+          fi
         fi
+      done
+      if [[ -n "$best" ]]; then
+        resolved=$((resolved + 1))
+        total_latency=$((total_latency + best))
+      else
+        failed=$((failed + 1))
       fi
     done
-    if [[ -n "$best" ]]; then
-      resolved=$((resolved + 1))
-      total_latency=$((total_latency + best))
-    else
-      failed=$((failed + 1))
-    fi
-  done
+  fi
 
   local avg_ms="9999" reliability="0"
   if (( resolved > 0 )); then
@@ -319,7 +444,8 @@ bench_provider() {
   reliability=$(awk -v r="$resolved" -v t="${#DOMAINS[@]}" 'BEGIN { printf "%.1f", (r/t)*100 }')
 
   # Write each provider to its own file to avoid race conditions
-  echo "${idx}|${name}|${avg_ms}|${resolved}|${failed}|${reliability}" > "${result_file}.${idx}"
+  # Format: idx|name|avg_ms|resolved|failed|reliability|ipv4_csv|ipv6_csv
+  echo "${idx}|${name}|${avg_ms}|${resolved}|${failed}|${reliability}|${ipv4_csv}|${ipv6_csv}" > "${result_file}.${idx}"
 }
 
 # ── Progress Display ──────────────────────────────────────────────────────────
@@ -431,13 +557,15 @@ display_results() {
   count=$(wc -l < "$sorted_file")
 
   # Read results into arrays
-  local -a names=() latencies=() resolved=() failed=() reliabilities=()
-  while IFS='|' read -r _idx name avg res fail rel; do
+  local -a names=() latencies=() resolved=() failed=() reliabilities=() ipv4s=() ipv6s=()
+  while IFS='|' read -r _idx name avg res fail rel ipv4 ipv6; do
     names+=("$name")
     latencies+=("$avg")
     resolved+=("$res")
     failed+=("$fail")
     reliabilities+=("$rel")
+    ipv4s+=("$ipv4")
+    ipv6s+=("$ipv6")
   done < "$sorted_file"
 
   # Find max latency for graph scaling (excluding 9999)
@@ -469,12 +597,34 @@ display_results() {
     echo
   done
 
+  # ── DNS Configuration for Top Performers ────────────────────────────
+  echo -e "  ${BLD}${CYN}📋 DNS CONFIGURATION — Enter these addresses in your network settings${RST}"
+  echo -e "  ${DKGRY}$(printf '━%.0s' {1..68})${RST}"
+  echo
+
+  for ((i = 0; i < limit; i++)); do
+    local lat="${latencies[$i]}"
+    if (( lat >= 9999 )); then continue; fi
+    echo -e "    ${medal_icons[$i]} ${BLD}${medals[$i]}${RST}  ${BLD}${WHT}${names[$i]}${RST}"
+    if [[ -n "${ipv4s[$i]}" ]]; then
+      local ipv4_display
+      ipv4_display=$(echo "${ipv4s[$i]}" | sed 's/,/  |  /g')
+      echo -e "         ${GRY}IPv4:${RST}  ${BLD}${WHT}${ipv4_display}${RST}"
+    fi
+    if [[ -n "${ipv6s[$i]}" ]]; then
+      local ipv6_display
+      ipv6_display=$(echo "${ipv6s[$i]}" | sed 's/,/  |  /g')
+      echo -e "         ${GRY}IPv6:${RST}  ${BLD}${WHT}${ipv6_display}${RST}"
+    fi
+    echo
+  done
+
   # ── Full Rankings Table ─────────────────────────────────────────────────
   echo
   echo -e "  ${BLD}${CYN}${ARROW} FULL RANKINGS${RST}"
-  echo -e "  ${DKGRY}$(printf '━%.0s' {1..76})${RST}"
-  printf "  ${BLD}${GRY}%-4s %-18s %8s  %-25s %8s${RST}\n" "#" "Provider" "Avg ms" "Latency" "Reliab."
-  echo -e "  ${DKGRY}$(printf '─%.0s' {1..76})${RST}"
+  echo -e "  ${DKGRY}$(printf '━%.0s' {1..80})${RST}"
+  printf "  ${BLD}${GRY}%-4s %-22s %8s  %-25s %8s${RST}\n" "#" "Provider" "Avg ms" "Latency" "Reliab."
+  echo -e "  ${DKGRY}$(printf '─%.0s' {1..80})${RST}"
 
   for ((i = 0; i < count; i++)); do
     local rank=$((i + 1))
@@ -510,7 +660,7 @@ display_results() {
     if (( rank <= 3 )); then rank_color="$WHT"; fi
 
     printf "  ${rank_color}${BLD}%3d${RST} " "$rank"
-    printf "${bar_color}%-18.18s${RST} " "${names[$i]}"
+    printf "${bar_color}%-22.22s${RST} " "${names[$i]}"
     printf "${BLD}%6s${RST}  " "$lat_display"
 
     # Inline latency bar
@@ -533,10 +683,9 @@ display_results() {
     echo
   done
 
-  echo -e "  ${DKGRY}$(printf '━%.0s' {1..76})${RST}"
+  echo -e "  ${DKGRY}$(printf '━%.0s' {1..80})${RST}"
   echo
 
-  # ── Latency Distribution Graph ─────────────────────────────────────────
   echo -e "  ${BLD}${MAG}${CIRCLE} LATENCY DISTRIBUTION${RST}"
   echo -e "  ${DKGRY}$(printf '━%.0s' {1..60})${RST}"
 
@@ -574,11 +723,11 @@ export_results() {
   local csv_file="dns-bench-${timestamp}.csv"
 
   {
-    echo "rank,provider,avg_latency_ms,domains_resolved,domains_failed,reliability_pct"
+    echo "rank,provider,avg_latency_ms,domains_resolved,domains_failed,reliability_pct,ipv4_servers,ipv6_servers"
     local rank=0
-    while IFS='|' read -r _idx name avg res fail rel; do
+    while IFS='|' read -r _idx name avg res fail rel ipv4 ipv6; do
       rank=$((rank + 1))
-      echo "${rank},\"${name}\",${avg},${res},${fail},${rel}"
+      echo "${rank},\"${name}\",${avg},${res},${fail},${rel},\"${ipv4}\",\"${ipv6}\""
     done < "$sorted_file"
   } > "$csv_file"
 
@@ -590,9 +739,10 @@ show_system_info() {
   detect_os
   local os_name
   case "$OS" in
-    macos) os_name="macOS $(sw_vers -productVersion 2>/dev/null || echo 'unknown')" ;;
-    linux) os_name="Linux $(uname -r)" ;;
-    *)     os_name="Unknown ($(uname -s))" ;;
+    macos)   os_name="macOS $(sw_vers -productVersion 2>/dev/null || echo 'unknown')" ;;
+    linux)   os_name="Linux $(uname -r)" ;;
+    windows) os_name="Windows ($(uname -s))" ;;
+    *)       os_name="Unknown ($(uname -s))" ;;
   esac
 
   # Try to detect current DNS server
@@ -605,6 +755,11 @@ show_system_info() {
 
   echo -e "  ${GRY}${CIRCLE} System: ${WHT}${os_name}${RST}"
   echo -e "  ${GRY}${CIRCLE} Current DNS: ${WHT}${current_dns}${RST}"
+  if [[ "$HAS_IPV6" == "true" ]]; then
+    echo -e "  ${GRY}${CIRCLE} IPv6: ${GRN}Available — IPv6 providers will be tested${RST}"
+  else
+    echo -e "  ${GRY}${CIRCLE} IPv6: ${YLW}Not available — skipping IPv6-only providers${RST}"
+  fi
   echo -e "  ${GRY}${CIRCLE} Date: ${WHT}$(date '+%Y-%m-%d %H:%M:%S %Z')${RST}"
   echo
 }
@@ -613,6 +768,7 @@ show_system_info() {
 main() {
   banner
   install_deps
+  check_ipv6
   show_system_info
   run_benchmark
   display_results
