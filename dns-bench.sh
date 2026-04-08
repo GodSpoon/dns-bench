@@ -15,7 +15,9 @@ DOMAINS_FILE=""
 TIMEOUT=2
 MAX_JOBS=10
 COLOR=true
-VERSION="2.0.0"
+VERSION="2.1.0"
+CATEGORY=""       # CLI-selected categories (comma-separated), empty = interactive/all
+SKIP_MENU=false   # Skip interactive menu when --all or --category used
 
 # ── Parse Arguments ───────────────────────────────────────────────────────────
 usage() {
@@ -30,6 +32,10 @@ Options:
   -d, --domains FILE   Custom domains file (one per line)
   -t, --timeout N      Query timeout in seconds (default: 2)
   -j, --jobs N         Parallel jobs (default: 10)
+  -c, --category LIST  Comma-separated category filter (default: interactive menu)
+                       Categories: privacy, general, security, adblock, family
+                       Example: --category general,security
+  -a, --all            Benchmark all providers, skip category menu
       --no-color       Disable colored output
   -h, --help           Show this help
   -v, --version        Show version
@@ -39,14 +45,16 @@ USAGE
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    -q|--queries)  QUERIES="$2"; shift 2 ;;
-    -d|--domains)  DOMAINS_FILE="$2"; shift 2 ;;
-    -t|--timeout)  TIMEOUT="$2"; shift 2 ;;
-    -j|--jobs)     MAX_JOBS="$2"; shift 2 ;;
-    --no-color)    COLOR=false; shift ;;
-    -h|--help)     usage ;;
-    -v|--version)  echo "dns-bench $VERSION"; exit 0 ;;
-    *)             echo "Unknown option: $1" >&2; usage ;;
+    -q|--queries)   QUERIES="$2"; shift 2 ;;
+    -d|--domains)   DOMAINS_FILE="$2"; shift 2 ;;
+    -t|--timeout)   TIMEOUT="$2"; shift 2 ;;
+    -j|--jobs)      MAX_JOBS="$2"; shift 2 ;;
+    -c|--category)  CATEGORY="$2"; SKIP_MENU=true; shift 2 ;;
+    -a|--all)       CATEGORY="all"; SKIP_MENU=true; shift ;;
+    --no-color)     COLOR=false; shift ;;
+    -h|--help)      usage ;;
+    -v|--version)   echo "dns-bench $VERSION"; exit 0 ;;
+    *)              echo "Unknown option: $1" >&2; usage ;;
   esac
 done
 
@@ -249,131 +257,245 @@ else
 fi
 
 # ── DNS Providers ─────────────────────────────────────────────────────────────
-# Format: "Name|IPv4_1,IPv4_2|IPv6_1,IPv6_2"
+# Format: "Name|IPv4_1,IPv4_2|IPv6_1,IPv6_2|category"
+# Categories: privacy, general, security, adblock, family
 # Source: https://adguard-dns.io/kb/general/dns-providers/
-declare -a PROVIDERS=(
-  # ── AdGuard DNS ──────────────────────────────────────────────
-  "AdGuard Default|94.140.14.14,94.140.15.15|2a10:50c0::ad1:ff,2a10:50c0::ad2:ff"
-  "AdGuard Family|94.140.14.15,94.140.15.16|2a10:50c0::bad1:ff,2a10:50c0::bad2:ff"
-  "AdGuard Non-filter|94.140.14.140,94.140.14.141|2a10:50c0::1:ff,2a10:50c0::2:ff"
-  # ── Google DNS ───────────────────────────────────────────────
-  "Google|8.8.8.8,8.8.4.4|2001:4860:4860::8888,2001:4860:4860::8844"
-  # ── Cloudflare DNS ───────────────────────────────────────────
-  "Cloudflare|1.1.1.1,1.0.0.1|2606:4700:4700::1111,2606:4700:4700::1001"
-  "Cloudflare Malware|1.1.1.2,1.0.0.2|2606:4700:4700::1112,2606:4700:4700::1002"
-  "Cloudflare Family|1.1.1.3,1.0.0.3|2606:4700:4700::1113,2606:4700:4700::1003"
-  # ── Quad9 DNS ────────────────────────────────────────────────
-  "Quad9|9.9.9.9,149.112.112.112|2620:fe::fe,2620:fe::fe:9"
-  "Quad9 Unsecured|9.9.9.10,149.112.112.10|2620:fe::10,2620:fe::fe:10"
-  "Quad9 ECS|9.9.9.11,149.112.112.11|2620:fe::11,2620:fe::fe:11"
-  # ── OpenDNS (Cisco) ─────────────────────────────────────────
-  "OpenDNS|208.67.222.222,208.67.220.220|2620:119:35::35,2620:119:53::53"
-  "OpenDNS Family|208.67.222.123,208.67.220.123|"
-  # ── Yandex DNS ───────────────────────────────────────────────
-  "Yandex Basic|77.88.8.8,77.88.8.1|2a02:6b8::feed:0ff,2a02:6b8:0:1::feed:0ff"
-  "Yandex Safe|77.88.8.88,77.88.8.2|2a02:6b8::feed:bad,2a02:6b8:0:1::feed:bad"
-  "Yandex Family|77.88.8.3,77.88.8.7|2a02:6b8::feed:a11,2a02:6b8:0:1::feed:a11"
-  # ── CleanBrowsing ────────────────────────────────────────────
-  "CleanBrowsing Family|185.228.168.168,185.228.169.168|2a0d:2a00:1::,2a0d:2a00:2::"
-  "CleanBrowsing Adult|185.228.168.10,185.228.169.11|2a0d:2a00:1::1,2a0d:2a00:2::1"
-  "CleanBrowsing Security|185.228.168.9,185.228.169.9|2a0d:2a00:1::2,2a0d:2a00:2::2"
-  # ── Comodo Secure DNS ────────────────────────────────────────
-  "Comodo Secure|8.26.56.26,8.20.247.20|"
-  # ── Neustar UltraDNS ────────────────────────────────────────
-  "Neustar R&P 1|156.154.70.1,156.154.71.1|2610:a1:1018::1,2610:a1:1019::1"
-  "Neustar R&P 2|156.154.70.5,156.154.71.5|2610:a1:1018::5,2610:a1:1019::5"
-  "Neustar Threat|156.154.70.2,156.154.71.2|2610:a1:1018::2,2610:a1:1019::2"
-  "Neustar Family|156.154.70.3,156.154.71.3|2610:a1:1018::3,2610:a1:1019::3"
-  "Neustar Business|156.154.70.4,156.154.71.4|2610:a1:1018::4,2610:a1:1019::4"
-  # ── Verisign Public DNS ──────────────────────────────────────
-  "Verisign|64.6.64.6,64.6.65.6|2620:74:1b::1:1,2620:74:1c::2:2"
-  # ── Level3 DNS ───────────────────────────────────────────────
-  "Level3|4.2.2.1,4.2.2.2|"
-  # ── SWITCH DNS ───────────────────────────────────────────────
-  "SWITCH|130.59.31.248|2001:620:0:ff::2"
-  # ── Dyn DNS ──────────────────────────────────────────────────
-  "Dyn|216.146.35.35,216.146.36.36|"
-  # ── DNS.WATCH ────────────────────────────────────────────────
-  "DNS.WATCH|84.200.69.80,84.200.70.40|2001:1608:10:25::1c04:b12f,2001:1608:10:25::9249:d69b"
-  # ── SkyDNS ───────────────────────────────────────────────────
-  "SkyDNS|193.58.251.251|"
-  # ── Comss.ru DNS ─────────────────────────────────────────────
-  "Comss.ru West|92.38.152.163,93.115.24.204|2a03:90c0:56::1a5,2a02:7b40:5eb0:e95d::1"
-  "Comss.ru East|92.223.109.31,91.230.211.67|2a03:90c0:b5::1a,2a04:2fc0:39::47"
-  # ── SafeDNS ──────────────────────────────────────────────────
-  "SafeDNS|195.46.39.39,195.46.39.40|"
-  # ── CIRA Canadian Shield ─────────────────────────────────────
-  "CIRA Private|149.112.121.10,149.112.122.10|2620:10A:80BB::10,2620:10A:80BC::10"
-  "CIRA Protected|149.112.121.20,149.112.122.20|2620:10A:80BB::20,2620:10A:80BC::20"
-  "CIRA Family|149.112.121.30,149.112.122.30|2620:10A:80BB::30,2620:10A:80BC::30"
-  # ── OpenNIC DNS ──────────────────────────────────────────────
-  "OpenNIC|185.121.177.177,169.239.202.202|2a05:dfc7:5::53,2a05:dfc7:5353::53"
-  # ── DNS for Family ───────────────────────────────────────────
-  "DNS for Family|94.130.180.225,78.47.64.161|2a01:4f8:1c0c:40db::1,2a01:4f8:1c17:4df8::1"
-  # ── CZ.NIC ODVR ─────────────────────────────────────────────
-  "CZ.NIC ODVR|193.17.47.1,185.43.135.1|2001:148f:ffff::1,2001:148f:fffe::1"
-  # ── Ali DNS ──────────────────────────────────────────────────
-  "AliDNS|223.5.5.5,223.6.6.6|2400:3200::1,2400:3200:baba::1"
-  # ── CFIEC Public DNS (IPv6 only) ─────────────────────────────
-  "CFIEC||240C::6666,240C::6644"
-  # ── Nawala Childprotection ───────────────────────────────────
-  "Nawala|180.131.144.144,180.131.145.145|"
-  # ── DNSCEPAT ─────────────────────────────────────────────────
-  "DNSCEPAT Asia|172.105.216.54|2400:8902::f03c:92ff:fe09:48cc"
-  "DNSCEPAT Europe|5.2.75.231|2a04:52c0:101:98d::"
-  # ── 360 Secure DNS ───────────────────────────────────────────
-  "360 Secure|101.226.4.6,218.30.118.6|"
-  # ── DNSPod ───────────────────────────────────────────────────
-  "DNSPod|119.29.29.29,119.28.28.28|"
-  # ── 114DNS ───────────────────────────────────────────────────
-  "114DNS|114.114.114.114,114.114.115.115|"
-  # ── Quad101 ──────────────────────────────────────────────────
-  "Quad101|101.101.101.101,101.102.103.104|2001:de4::101,2001:de4::102"
-  # ── OneDNS ───────────────────────────────────────────────────
-  "OneDNS Pure|117.50.10.10,52.80.52.52|"
-  "OneDNS Block|117.50.11.11,52.80.66.66|"
-  # ── Privacy-First DNS ────────────────────────────────────────
-  "Privacy-First SG|174.138.21.128|2400:6180:0:d0::5f6e:4001"
-  "Privacy-First JP|172.104.93.80|2400:8902::f03c:91ff:feda:c514"
-  # ── FreeDNS ──────────────────────────────────────────────────
-  "FreeDNS|172.104.237.57,172.104.49.100|"
-  # ── Freenom World ────────────────────────────────────────────
-  "Freenom World|80.80.80.80,80.80.81.81|"
-  # ── OSZX DNS ─────────────────────────────────────────────────
-  "OSZX|51.38.83.141|2001:41d0:801:2000::d64"
-  "PumpleX|51.38.82.198|2001:41d0:801:2000::1b28"
-  # ── Strongarm DNS ────────────────────────────────────────────
-  "Strongarm|54.174.40.213,52.3.100.184|"
-  # ── SafeSurfer DNS ───────────────────────────────────────────
-  "SafeSurfer|104.155.237.225,104.197.28.121|"
-  # ── DNS.SB ───────────────────────────────────────────────────
-  "DNS.SB|185.222.222.222,45.11.45.11|2a09::,2a11::"
-  # ── DNS Forge ────────────────────────────────────────────────
-  "DNS Forge|176.9.93.198,176.9.1.117|2a01:4f8:151:34aa::198,2a01:4f8:141:316d::117"
-  # ── LibreDNS ─────────────────────────────────────────────────
-  "LibreDNS|88.198.92.222|"
-  # ── AhaDNS ───────────────────────────────────────────────────
-  "AhaDNS NL|5.2.75.75|2a04:52c0:101:75::75"
-  "AhaDNS India|45.79.120.233|2400:8904:e001:43::43"
-  "AhaDNS LA|45.67.219.208|2a04:bdc7:100:70::70"
-  "AhaDNS NY|185.213.26.187|2a0d:5600:33:3::3"
-  # ── Seby DNS ─────────────────────────────────────────────────
-  "Seby|45.76.113.31|"
-  # ── puntCAT DNS ──────────────────────────────────────────────
-  "puntCAT|109.69.8.51|2a00:1508:0:4::9"
-  # ── DNSlify DNS ──────────────────────────────────────────────
-  "DNSlify|185.235.81.1,185.235.81.2|2a0d:4d00:81::1,2a0d:4d00:81::2"
-  # ── NextDNS ──────────────────────────────────────────────────
-  "NextDNS|45.90.28.0,45.90.30.0|"
-  # ── ControlD DNS ─────────────────────────────────────────────
-  "ControlD|76.76.2.0,76.76.10.0|"
-  # ── Mullvad DNS ──────────────────────────────────────────────
-  "Mullvad|194.242.2.2|"
-  # ── DNS0.eu ──────────────────────────────────────────────────
-  "DNS0.eu|193.110.81.0,185.253.5.0|"
+
+# Category descriptions (parallel arrays)
+CATEGORY_KEYS=("privacy" "general" "security" "adblock" "family")
+CATEGORY_NAMES=(
+  "Privacy-Focused / No-Log"
+  "General Purpose (Unfiltered)"
+  "Security / Malware Blocking"
+  "Ad & Tracker Blocking"
+  "Family / Content Filtering"
+)
+CATEGORY_DESCS=(
+  "Minimal or zero query logging"
+  "Fast, reliable, no content blocking"
+  "Blocks malicious domains & phishing"
+  "Strips ads and trackers"
+  "Blocks adult content & more"
 )
 
-PROVIDER_COUNT=${#PROVIDERS[@]}
+declare -a ALL_PROVIDERS=(
+  # ── AdGuard DNS ──────────────────────────────────────────────
+  "AdGuard Default|94.140.14.14,94.140.15.15|2a10:50c0::ad1:ff,2a10:50c0::ad2:ff|adblock"
+  "AdGuard Family|94.140.14.15,94.140.15.16|2a10:50c0::bad1:ff,2a10:50c0::bad2:ff|family"
+  "AdGuard Non-filter|94.140.14.140,94.140.14.141|2a10:50c0::1:ff,2a10:50c0::2:ff|general"
+  # ── Google DNS ───────────────────────────────────────────────
+  "Google|8.8.8.8,8.8.4.4|2001:4860:4860::8888,2001:4860:4860::8844|general"
+  # ── Cloudflare DNS ───────────────────────────────────────────
+  "Cloudflare|1.1.1.1,1.0.0.1|2606:4700:4700::1111,2606:4700:4700::1001|general"
+  "Cloudflare Malware|1.1.1.2,1.0.0.2|2606:4700:4700::1112,2606:4700:4700::1002|security"
+  "Cloudflare Family|1.1.1.3,1.0.0.3|2606:4700:4700::1113,2606:4700:4700::1003|family"
+  # ── Quad9 DNS ────────────────────────────────────────────────
+  "Quad9|9.9.9.9,149.112.112.112|2620:fe::fe,2620:fe::fe:9|security"
+  "Quad9 Unsecured|9.9.9.10,149.112.112.10|2620:fe::10,2620:fe::fe:10|general"
+  "Quad9 ECS|9.9.9.11,149.112.112.11|2620:fe::11,2620:fe::fe:11|security"
+  # ── OpenDNS (Cisco) ─────────────────────────────────────────
+  "OpenDNS|208.67.222.222,208.67.220.220|2620:119:35::35,2620:119:53::53|security"
+  "OpenDNS Family|208.67.222.123,208.67.220.123||family"
+  # ── Yandex DNS ───────────────────────────────────────────────
+  "Yandex Basic|77.88.8.8,77.88.8.1|2a02:6b8::feed:0ff,2a02:6b8:0:1::feed:0ff|general"
+  "Yandex Safe|77.88.8.88,77.88.8.2|2a02:6b8::feed:bad,2a02:6b8:0:1::feed:bad|security"
+  "Yandex Family|77.88.8.3,77.88.8.7|2a02:6b8::feed:a11,2a02:6b8:0:1::feed:a11|family"
+  # ── CleanBrowsing ────────────────────────────────────────────
+  "CleanBrowsing Family|185.228.168.168,185.228.169.168|2a0d:2a00:1::,2a0d:2a00:2::|family"
+  "CleanBrowsing Adult|185.228.168.10,185.228.169.11|2a0d:2a00:1::1,2a0d:2a00:2::1|family"
+  "CleanBrowsing Security|185.228.168.9,185.228.169.9|2a0d:2a00:1::2,2a0d:2a00:2::2|security"
+  # ── Comodo Secure DNS ────────────────────────────────────────
+  "Comodo Secure|8.26.56.26,8.20.247.20||security"
+  # ── Neustar UltraDNS ────────────────────────────────────────
+  "Neustar R&P 1|156.154.70.1,156.154.71.1|2610:a1:1018::1,2610:a1:1019::1|general"
+  "Neustar R&P 2|156.154.70.5,156.154.71.5|2610:a1:1018::5,2610:a1:1019::5|general"
+  "Neustar Threat|156.154.70.2,156.154.71.2|2610:a1:1018::2,2610:a1:1019::2|security"
+  "Neustar Family|156.154.70.3,156.154.71.3|2610:a1:1018::3,2610:a1:1019::3|family"
+  "Neustar Business|156.154.70.4,156.154.71.4|2610:a1:1018::4,2610:a1:1019::4|security"
+  # ── Verisign Public DNS ──────────────────────────────────────
+  "Verisign|64.6.64.6,64.6.65.6|2620:74:1b::1:1,2620:74:1c::2:2|general"
+  # ── Level3 DNS ───────────────────────────────────────────────
+  "Level3|4.2.2.1,4.2.2.2||general"
+  # ── SWITCH DNS ───────────────────────────────────────────────
+  "SWITCH|130.59.31.248|2001:620:0:ff::2|privacy"
+  # ── Dyn DNS ──────────────────────────────────────────────────
+  "Dyn|216.146.35.35,216.146.36.36||general"
+  # ── DNS.WATCH ────────────────────────────────────────────────
+  "DNS.WATCH|84.200.69.80,84.200.70.40|2001:1608:10:25::1c04:b12f,2001:1608:10:25::9249:d69b|privacy"
+  # ── SkyDNS ───────────────────────────────────────────────────
+  "SkyDNS|193.58.251.251||security"
+  # ── Comss.ru DNS ─────────────────────────────────────────────
+  "Comss.ru West|92.38.152.163,93.115.24.204|2a03:90c0:56::1a5,2a02:7b40:5eb0:e95d::1|adblock"
+  "Comss.ru East|92.223.109.31,91.230.211.67|2a03:90c0:b5::1a,2a04:2fc0:39::47|adblock"
+  # ── SafeDNS ──────────────────────────────────────────────────
+  "SafeDNS|195.46.39.39,195.46.39.40||security"
+  # ── CIRA Canadian Shield ─────────────────────────────────────
+  "CIRA Private|149.112.121.10,149.112.122.10|2620:10A:80BB::10,2620:10A:80BC::10|privacy"
+  "CIRA Protected|149.112.121.20,149.112.122.20|2620:10A:80BB::20,2620:10A:80BC::20|security"
+  "CIRA Family|149.112.121.30,149.112.122.30|2620:10A:80BB::30,2620:10A:80BC::30|family"
+  # ── OpenNIC DNS ──────────────────────────────────────────────
+  "OpenNIC|185.121.177.177,169.239.202.202|2a05:dfc7:5::53,2a05:dfc7:5353::53|privacy"
+  # ── DNS for Family ───────────────────────────────────────────
+  "DNS for Family|94.130.180.225,78.47.64.161|2a01:4f8:1c0c:40db::1,2a01:4f8:1c17:4df8::1|family"
+  # ── CZ.NIC ODVR ─────────────────────────────────────────────
+  "CZ.NIC ODVR|193.17.47.1,185.43.135.1|2001:148f:ffff::1,2001:148f:fffe::1|privacy"
+  # ── Ali DNS ──────────────────────────────────────────────────
+  "AliDNS|223.5.5.5,223.6.6.6|2400:3200::1,2400:3200:baba::1|general"
+  # ── CFIEC Public DNS (IPv6 only) ─────────────────────────────
+  "CFIEC||240C::6666,240C::6644|general"
+  # ── Nawala Childprotection ───────────────────────────────────
+  "Nawala|180.131.144.144,180.131.145.145||family"
+  # ── DNSCEPAT ─────────────────────────────────────────────────
+  "DNSCEPAT Asia|172.105.216.54|2400:8902::f03c:92ff:fe09:48cc|security"
+  "DNSCEPAT Europe|5.2.75.231|2a04:52c0:101:98d::|security"
+  # ── 360 Secure DNS ───────────────────────────────────────────
+  "360 Secure|101.226.4.6,218.30.118.6||security"
+  # ── DNSPod ───────────────────────────────────────────────────
+  "DNSPod|119.29.29.29,119.28.28.28||general"
+  # ── 114DNS ───────────────────────────────────────────────────
+  "114DNS|114.114.114.114,114.114.115.115||general"
+  # ── Quad101 ──────────────────────────────────────────────────
+  "Quad101|101.101.101.101,101.102.103.104|2001:de4::101,2001:de4::102|privacy"
+  # ── OneDNS ───────────────────────────────────────────────────
+  "OneDNS Pure|117.50.10.10,52.80.52.52||general"
+  "OneDNS Block|117.50.11.11,52.80.66.66||adblock"
+  # ── Privacy-First DNS ────────────────────────────────────────
+  "Privacy-First SG|174.138.21.128|2400:6180:0:d0::5f6e:4001|privacy"
+  "Privacy-First JP|172.104.93.80|2400:8902::f03c:91ff:feda:c514|privacy"
+  # ── FreeDNS ──────────────────────────────────────────────────
+  "FreeDNS|172.104.237.57,172.104.49.100||general"
+  # ── Freenom World ────────────────────────────────────────────
+  "Freenom World|80.80.80.80,80.80.81.81||privacy"
+  # ── OSZX DNS ─────────────────────────────────────────────────
+  "OSZX|51.38.83.141|2001:41d0:801:2000::d64|adblock"
+  "PumpleX|51.38.82.198|2001:41d0:801:2000::1b28|privacy"
+  # ── Strongarm DNS ────────────────────────────────────────────
+  "Strongarm|54.174.40.213,52.3.100.184||security"
+  # ── SafeSurfer DNS ───────────────────────────────────────────
+  "SafeSurfer|104.155.237.225,104.197.28.121||family"
+  # ── DNS.SB ───────────────────────────────────────────────────
+  "DNS.SB|185.222.222.222,45.11.45.11|2a09::,2a11::|privacy"
+  # ── DNS Forge ────────────────────────────────────────────────
+  "DNS Forge|176.9.93.198,176.9.1.117|2a01:4f8:151:34aa::198,2a01:4f8:141:316d::117|adblock"
+  # ── LibreDNS ─────────────────────────────────────────────────
+  "LibreDNS|88.198.92.222||privacy"
+  # ── AhaDNS ───────────────────────────────────────────────────
+  "AhaDNS NL|5.2.75.75|2a04:52c0:101:75::75|adblock"
+  "AhaDNS India|45.79.120.233|2400:8904:e001:43::43|adblock"
+  "AhaDNS LA|45.67.219.208|2a04:bdc7:100:70::70|adblock"
+  "AhaDNS NY|185.213.26.187|2a0d:5600:33:3::3|adblock"
+  # ── Seby DNS ─────────────────────────────────────────────────
+  "Seby|45.76.113.31||privacy"
+  # ── puntCAT DNS ──────────────────────────────────────────────
+  "puntCAT|109.69.8.51|2a00:1508:0:4::9|privacy"
+  # ── DNSlify DNS ──────────────────────────────────────────────
+  "DNSlify|185.235.81.1,185.235.81.2|2a0d:4d00:81::1,2a0d:4d00:81::2|general"
+  # ── NextDNS ──────────────────────────────────────────────────
+  "NextDNS|45.90.28.0,45.90.30.0||general"
+  # ── ControlD DNS ─────────────────────────────────────────────
+  "ControlD|76.76.2.0,76.76.10.0||security"
+  # ── Mullvad DNS ──────────────────────────────────────────────
+  "Mullvad|194.242.2.2||privacy"
+  # ── DNS0.eu ──────────────────────────────────────────────────
+  "DNS0.eu|193.110.81.0,185.253.5.0||security"
+)
+
+# ── Category Selection ────────────────────────────────────────────────────────
+show_category_menu() {
+  echo -e "  ${BLD}${CYN}${ARROW} SELECT PROVIDER CATEGORIES${RST}"
+  echo -e "  ${DKGRY}$(printf '━%.0s' {1..60})${RST}"
+  echo
+  echo -e "  ${GRY}Enter numbers separated by spaces, or press ${BLD}Enter${RST}${GRY} for all:${RST}"
+  echo
+
+  local i
+  for ((i = 0; i < ${#CATEGORY_KEYS[@]}; i++)); do
+    local num=$((i + 1))
+    local count=0
+    for entry in "${ALL_PROVIDERS[@]}"; do
+      local cat
+      cat="${entry##*|}"
+      if [[ "$cat" == "${CATEGORY_KEYS[$i]}" ]]; then
+        count=$((count + 1))
+      fi
+    done
+    printf "    ${BLD}${WHT}%d${RST}  %-35s ${GRY}(%d providers)${RST}\n" \
+      "$num" "${CATEGORY_NAMES[$i]} " "$count"
+    echo -e "       ${DIM}${GRY}${CATEGORY_DESCS[$i]}${RST}"
+  done
+
+  echo
+  printf "  ${BLD}${CYN}${ARROW}${RST} ${BLD}Choice [1-5, or Enter=all]: ${RST}"
+
+  local input
+  read -r input </dev/tty
+
+  if [[ -z "$input" ]]; then
+    CATEGORY="all"
+  else
+    CATEGORY=""
+    for num in $input; do
+      if [[ "$num" =~ ^[1-5]$ ]]; then
+        local idx=$((num - 1))
+        if [[ -n "$CATEGORY" ]]; then
+          CATEGORY="${CATEGORY},${CATEGORY_KEYS[$idx]}"
+        else
+          CATEGORY="${CATEGORY_KEYS[$idx]}"
+        fi
+      fi
+    done
+    if [[ -z "$CATEGORY" ]]; then
+      CATEGORY="all"
+    fi
+  fi
+  echo
+}
+
+filter_providers() {
+  PROVIDERS=()
+  if [[ "$CATEGORY" == "all" || -z "$CATEGORY" ]]; then
+    for entry in "${ALL_PROVIDERS[@]}"; do
+      # Strip category tag for the working array (keep name|ipv4|ipv6)
+      PROVIDERS+=("${entry%|*}")
+    done
+  else
+    IFS=',' read -r -a selected_cats <<< "$CATEGORY"
+    for entry in "${ALL_PROVIDERS[@]}"; do
+      local cat="${entry##*|}"
+      for sel in "${selected_cats[@]}"; do
+        if [[ "$cat" == "$sel" ]]; then
+          PROVIDERS+=("${entry%|*}")
+          break
+        fi
+      done
+    done
+  fi
+
+  PROVIDER_COUNT=${#PROVIDERS[@]}
+
+  if (( PROVIDER_COUNT == 0 )); then
+    echo -e "${RED}${CROSS} No providers matched the selected categories.${RST}" >&2
+    exit 1
+  fi
+
+  # Build display label for selected categories
+  CATEGORY_LABEL=""
+  if [[ "$CATEGORY" == "all" || -z "$CATEGORY" ]]; then
+    CATEGORY_LABEL="All categories"
+  else
+    local labels=()
+    IFS=',' read -r -a selected_cats <<< "$CATEGORY"
+    for sel in "${selected_cats[@]}"; do
+      for ((i = 0; i < ${#CATEGORY_KEYS[@]}; i++)); do
+        if [[ "${CATEGORY_KEYS[$i]}" == "$sel" ]]; then
+          labels+=("${CATEGORY_NAMES[$i]}")
+          break
+        fi
+      done
+    done
+    CATEGORY_LABEL=$(IFS=', '; echo "${labels[*]}")
+  fi
+}
 
 # ── Core Benchmark ────────────────────────────────────────────────────────────
 
@@ -483,7 +605,7 @@ run_benchmark() {
   echo "0" > "$progress_file"
 
   echo -e "  ${GRY}Testing ${BLD}${WHT}${PROVIDER_COUNT}${RST}${GRY} providers across ${BLD}${WHT}${#DOMAINS[@]}${RST}${GRY} domains (${QUERIES} queries each)${RST}"
-  echo -e "  ${GRY}Timeout: ${TIMEOUT}s | Parallel jobs: ${MAX_JOBS}${RST}"
+  echo -e "  ${GRY}Timeout: ${TIMEOUT}s | Parallel jobs: ${MAX_JOBS} | ${BLD}${WHT}${CATEGORY_LABEL}${RST}"
   echo
 
   local running=0 idx=0
@@ -771,6 +893,15 @@ main() {
   install_deps
   check_ipv6
   show_system_info
+
+  # Category selection: interactive menu unless --all or --category was given
+  if [[ "$SKIP_MENU" != "true" ]] && [[ -t 0 ]]; then
+    show_category_menu
+  elif [[ -z "$CATEGORY" ]]; then
+    CATEGORY="all"
+  fi
+  filter_providers
+
   run_benchmark
   display_results
   export_results

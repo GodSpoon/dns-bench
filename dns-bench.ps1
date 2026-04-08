@@ -11,11 +11,13 @@ param(
     [Alias("q")][int]$Queries = 3,
     [Alias("t")][int]$Timeout = 2,
     [Alias("j")][int]$Jobs = 10,
+    [Alias("c")][string]$Category = "",
+    [Alias("a")][switch]$All,
     [switch]$NoColor,
     [Alias("h")][switch]$Help
 )
 
-$Version = "2.0.0"
+$Version = "2.1.0"
 
 if ($Help) {
     Write-Host @"
@@ -28,6 +30,9 @@ Options:
   -Queries N     Queries per domain per server (default: 3)
   -Timeout N     Query timeout in seconds (default: 2)
   -Jobs N        Parallel jobs (default: 10)
+  -Category LIST Comma-separated category filter (default: interactive menu)
+                 Categories: privacy, general, security, adblock, family
+  -All           Benchmark all providers, skip category menu
   -NoColor       Disable colored output
   -Help          Show this help
 "@
@@ -77,80 +82,150 @@ $Domains = @(
 
 # ── DNS Providers ─────────────────────────────────────────────────────────────
 # Source: https://adguard-dns.io/kb/general/dns-providers/
-$Providers = @(
-    @{ Name="AdGuard Default"; IPv4=@("94.140.14.14","94.140.15.15"); IPv6=@("2a10:50c0::ad1:ff","2a10:50c0::ad2:ff") },
-    @{ Name="AdGuard Family"; IPv4=@("94.140.14.15","94.140.15.16"); IPv6=@("2a10:50c0::bad1:ff","2a10:50c0::bad2:ff") },
-    @{ Name="AdGuard Non-filter"; IPv4=@("94.140.14.140","94.140.14.141"); IPv6=@("2a10:50c0::1:ff","2a10:50c0::2:ff") },
-    @{ Name="Google"; IPv4=@("8.8.8.8","8.8.4.4"); IPv6=@("2001:4860:4860::8888","2001:4860:4860::8844") },
-    @{ Name="Cloudflare"; IPv4=@("1.1.1.1","1.0.0.1"); IPv6=@("2606:4700:4700::1111","2606:4700:4700::1001") },
-    @{ Name="Cloudflare Malware"; IPv4=@("1.1.1.2","1.0.0.2"); IPv6=@("2606:4700:4700::1112","2606:4700:4700::1002") },
-    @{ Name="Cloudflare Family"; IPv4=@("1.1.1.3","1.0.0.3"); IPv6=@("2606:4700:4700::1113","2606:4700:4700::1003") },
-    @{ Name="Quad9"; IPv4=@("9.9.9.9","149.112.112.112"); IPv6=@("2620:fe::fe","2620:fe::fe:9") },
-    @{ Name="Quad9 Unsecured"; IPv4=@("9.9.9.10","149.112.112.10"); IPv6=@("2620:fe::10","2620:fe::fe:10") },
-    @{ Name="Quad9 ECS"; IPv4=@("9.9.9.11","149.112.112.11"); IPv6=@("2620:fe::11","2620:fe::fe:11") },
-    @{ Name="OpenDNS"; IPv4=@("208.67.222.222","208.67.220.220"); IPv6=@("2620:119:35::35","2620:119:53::53") },
-    @{ Name="OpenDNS Family"; IPv4=@("208.67.222.123","208.67.220.123"); IPv6=@() },
-    @{ Name="Yandex Basic"; IPv4=@("77.88.8.8","77.88.8.1"); IPv6=@("2a02:6b8::feed:0ff","2a02:6b8:0:1::feed:0ff") },
-    @{ Name="Yandex Safe"; IPv4=@("77.88.8.88","77.88.8.2"); IPv6=@("2a02:6b8::feed:bad","2a02:6b8:0:1::feed:bad") },
-    @{ Name="Yandex Family"; IPv4=@("77.88.8.3","77.88.8.7"); IPv6=@("2a02:6b8::feed:a11","2a02:6b8:0:1::feed:a11") },
-    @{ Name="CleanBrowsing Family"; IPv4=@("185.228.168.168","185.228.169.168"); IPv6=@("2a0d:2a00:1::","2a0d:2a00:2::") },
-    @{ Name="CleanBrowsing Adult"; IPv4=@("185.228.168.10","185.228.169.11"); IPv6=@("2a0d:2a00:1::1","2a0d:2a00:2::1") },
-    @{ Name="CleanBrowsing Security"; IPv4=@("185.228.168.9","185.228.169.9"); IPv6=@("2a0d:2a00:1::2","2a0d:2a00:2::2") },
-    @{ Name="Comodo Secure"; IPv4=@("8.26.56.26","8.20.247.20"); IPv6=@() },
-    @{ Name="Neustar R&P 1"; IPv4=@("156.154.70.1","156.154.71.1"); IPv6=@("2610:a1:1018::1","2610:a1:1019::1") },
-    @{ Name="Neustar R&P 2"; IPv4=@("156.154.70.5","156.154.71.5"); IPv6=@("2610:a1:1018::5","2610:a1:1019::5") },
-    @{ Name="Neustar Threat"; IPv4=@("156.154.70.2","156.154.71.2"); IPv6=@("2610:a1:1018::2","2610:a1:1019::2") },
-    @{ Name="Neustar Family"; IPv4=@("156.154.70.3","156.154.71.3"); IPv6=@("2610:a1:1018::3","2610:a1:1019::3") },
-    @{ Name="Neustar Business"; IPv4=@("156.154.70.4","156.154.71.4"); IPv6=@("2610:a1:1018::4","2610:a1:1019::4") },
-    @{ Name="Verisign"; IPv4=@("64.6.64.6","64.6.65.6"); IPv6=@("2620:74:1b::1:1","2620:74:1c::2:2") },
-    @{ Name="Level3"; IPv4=@("4.2.2.1","4.2.2.2"); IPv6=@() },
-    @{ Name="SWITCH"; IPv4=@("130.59.31.248"); IPv6=@("2001:620:0:ff::2") },
-    @{ Name="Dyn"; IPv4=@("216.146.35.35","216.146.36.36"); IPv6=@() },
-    @{ Name="DNS.WATCH"; IPv4=@("84.200.69.80","84.200.70.40"); IPv6=@("2001:1608:10:25::1c04:b12f","2001:1608:10:25::9249:d69b") },
-    @{ Name="SkyDNS"; IPv4=@("193.58.251.251"); IPv6=@() },
-    @{ Name="Comss.ru West"; IPv4=@("92.38.152.163","93.115.24.204"); IPv6=@("2a03:90c0:56::1a5","2a02:7b40:5eb0:e95d::1") },
-    @{ Name="Comss.ru East"; IPv4=@("92.223.109.31","91.230.211.67"); IPv6=@("2a03:90c0:b5::1a","2a04:2fc0:39::47") },
-    @{ Name="SafeDNS"; IPv4=@("195.46.39.39","195.46.39.40"); IPv6=@() },
-    @{ Name="CIRA Private"; IPv4=@("149.112.121.10","149.112.122.10"); IPv6=@("2620:10A:80BB::10","2620:10A:80BC::10") },
-    @{ Name="CIRA Protected"; IPv4=@("149.112.121.20","149.112.122.20"); IPv6=@("2620:10A:80BB::20","2620:10A:80BC::20") },
-    @{ Name="CIRA Family"; IPv4=@("149.112.121.30","149.112.122.30"); IPv6=@("2620:10A:80BB::30","2620:10A:80BC::30") },
-    @{ Name="OpenNIC"; IPv4=@("185.121.177.177","169.239.202.202"); IPv6=@("2a05:dfc7:5::53","2a05:dfc7:5353::53") },
-    @{ Name="DNS for Family"; IPv4=@("94.130.180.225","78.47.64.161"); IPv6=@("2a01:4f8:1c0c:40db::1","2a01:4f8:1c17:4df8::1") },
-    @{ Name="CZ.NIC ODVR"; IPv4=@("193.17.47.1","185.43.135.1"); IPv6=@("2001:148f:ffff::1","2001:148f:fffe::1") },
-    @{ Name="AliDNS"; IPv4=@("223.5.5.5","223.6.6.6"); IPv6=@("2400:3200::1","2400:3200:baba::1") },
-    @{ Name="CFIEC"; IPv4=@(); IPv6=@("240C::6666","240C::6644") },
-    @{ Name="Nawala"; IPv4=@("180.131.144.144","180.131.145.145"); IPv6=@() },
-    @{ Name="DNSCEPAT Asia"; IPv4=@("172.105.216.54"); IPv6=@("2400:8902::f03c:92ff:fe09:48cc") },
-    @{ Name="DNSCEPAT Europe"; IPv4=@("5.2.75.231"); IPv6=@("2a04:52c0:101:98d::") },
-    @{ Name="360 Secure"; IPv4=@("101.226.4.6","218.30.118.6"); IPv6=@() },
-    @{ Name="DNSPod"; IPv4=@("119.29.29.29","119.28.28.28"); IPv6=@() },
-    @{ Name="114DNS"; IPv4=@("114.114.114.114","114.114.115.115"); IPv6=@() },
-    @{ Name="Quad101"; IPv4=@("101.101.101.101","101.102.103.104"); IPv6=@("2001:de4::101","2001:de4::102") },
-    @{ Name="OneDNS Pure"; IPv4=@("117.50.10.10","52.80.52.52"); IPv6=@() },
-    @{ Name="OneDNS Block"; IPv4=@("117.50.11.11","52.80.66.66"); IPv6=@() },
-    @{ Name="Privacy-First SG"; IPv4=@("174.138.21.128"); IPv6=@("2400:6180:0:d0::5f6e:4001") },
-    @{ Name="Privacy-First JP"; IPv4=@("172.104.93.80"); IPv6=@("2400:8902::f03c:91ff:feda:c514") },
-    @{ Name="FreeDNS"; IPv4=@("172.104.237.57","172.104.49.100"); IPv6=@() },
-    @{ Name="Freenom World"; IPv4=@("80.80.80.80","80.80.81.81"); IPv6=@() },
-    @{ Name="OSZX"; IPv4=@("51.38.83.141"); IPv6=@("2001:41d0:801:2000::d64") },
-    @{ Name="PumpleX"; IPv4=@("51.38.82.198"); IPv6=@("2001:41d0:801:2000::1b28") },
-    @{ Name="Strongarm"; IPv4=@("54.174.40.213","52.3.100.184"); IPv6=@() },
-    @{ Name="SafeSurfer"; IPv4=@("104.155.237.225","104.197.28.121"); IPv6=@() },
-    @{ Name="DNS.SB"; IPv4=@("185.222.222.222","45.11.45.11"); IPv6=@("2a09::","2a11::") },
-    @{ Name="DNS Forge"; IPv4=@("176.9.93.198","176.9.1.117"); IPv6=@("2a01:4f8:151:34aa::198","2a01:4f8:141:316d::117") },
-    @{ Name="LibreDNS"; IPv4=@("88.198.92.222"); IPv6=@() },
-    @{ Name="AhaDNS NL"; IPv4=@("5.2.75.75"); IPv6=@("2a04:52c0:101:75::75") },
-    @{ Name="AhaDNS India"; IPv4=@("45.79.120.233"); IPv6=@("2400:8904:e001:43::43") },
-    @{ Name="AhaDNS LA"; IPv4=@("45.67.219.208"); IPv6=@("2a04:bdc7:100:70::70") },
-    @{ Name="AhaDNS NY"; IPv4=@("185.213.26.187"); IPv6=@("2a0d:5600:33:3::3") },
-    @{ Name="Seby"; IPv4=@("45.76.113.31"); IPv6=@() },
-    @{ Name="puntCAT"; IPv4=@("109.69.8.51"); IPv6=@("2a00:1508:0:4::9") },
-    @{ Name="DNSlify"; IPv4=@("185.235.81.1","185.235.81.2"); IPv6=@("2a0d:4d00:81::1","2a0d:4d00:81::2") },
-    @{ Name="NextDNS"; IPv4=@("45.90.28.0","45.90.30.0"); IPv6=@() },
-    @{ Name="ControlD"; IPv4=@("76.76.2.0","76.76.10.0"); IPv6=@() },
-    @{ Name="Mullvad"; IPv4=@("194.242.2.2"); IPv6=@() },
-    @{ Name="DNS0.eu"; IPv4=@("193.110.81.0","185.253.5.0"); IPv6=@() }
+# Cat: privacy, general, security, adblock, family
+$AllProviders = @(
+    @{ Name="AdGuard Default"; IPv4=@("94.140.14.14","94.140.15.15"); IPv6=@("2a10:50c0::ad1:ff","2a10:50c0::ad2:ff"); Cat="adblock" },
+    @{ Name="AdGuard Family"; IPv4=@("94.140.14.15","94.140.15.16"); IPv6=@("2a10:50c0::bad1:ff","2a10:50c0::bad2:ff"); Cat="family" },
+    @{ Name="AdGuard Non-filter"; IPv4=@("94.140.14.140","94.140.14.141"); IPv6=@("2a10:50c0::1:ff","2a10:50c0::2:ff"); Cat="general" },
+    @{ Name="Google"; IPv4=@("8.8.8.8","8.8.4.4"); IPv6=@("2001:4860:4860::8888","2001:4860:4860::8844"); Cat="general" },
+    @{ Name="Cloudflare"; IPv4=@("1.1.1.1","1.0.0.1"); IPv6=@("2606:4700:4700::1111","2606:4700:4700::1001"); Cat="general" },
+    @{ Name="Cloudflare Malware"; IPv4=@("1.1.1.2","1.0.0.2"); IPv6=@("2606:4700:4700::1112","2606:4700:4700::1002"); Cat="security" },
+    @{ Name="Cloudflare Family"; IPv4=@("1.1.1.3","1.0.0.3"); IPv6=@("2606:4700:4700::1113","2606:4700:4700::1003"); Cat="family" },
+    @{ Name="Quad9"; IPv4=@("9.9.9.9","149.112.112.112"); IPv6=@("2620:fe::fe","2620:fe::fe:9"); Cat="security" },
+    @{ Name="Quad9 Unsecured"; IPv4=@("9.9.9.10","149.112.112.10"); IPv6=@("2620:fe::10","2620:fe::fe:10"); Cat="general" },
+    @{ Name="Quad9 ECS"; IPv4=@("9.9.9.11","149.112.112.11"); IPv6=@("2620:fe::11","2620:fe::fe:11"); Cat="security" },
+    @{ Name="OpenDNS"; IPv4=@("208.67.222.222","208.67.220.220"); IPv6=@("2620:119:35::35","2620:119:53::53"); Cat="security" },
+    @{ Name="OpenDNS Family"; IPv4=@("208.67.222.123","208.67.220.123"); IPv6=@(); Cat="family" },
+    @{ Name="Yandex Basic"; IPv4=@("77.88.8.8","77.88.8.1"); IPv6=@("2a02:6b8::feed:0ff","2a02:6b8:0:1::feed:0ff"); Cat="general" },
+    @{ Name="Yandex Safe"; IPv4=@("77.88.8.88","77.88.8.2"); IPv6=@("2a02:6b8::feed:bad","2a02:6b8:0:1::feed:bad"); Cat="security" },
+    @{ Name="Yandex Family"; IPv4=@("77.88.8.3","77.88.8.7"); IPv6=@("2a02:6b8::feed:a11","2a02:6b8:0:1::feed:a11"); Cat="family" },
+    @{ Name="CleanBrowsing Family"; IPv4=@("185.228.168.168","185.228.169.168"); IPv6=@("2a0d:2a00:1::","2a0d:2a00:2::"); Cat="family" },
+    @{ Name="CleanBrowsing Adult"; IPv4=@("185.228.168.10","185.228.169.11"); IPv6=@("2a0d:2a00:1::1","2a0d:2a00:2::1"); Cat="family" },
+    @{ Name="CleanBrowsing Security"; IPv4=@("185.228.168.9","185.228.169.9"); IPv6=@("2a0d:2a00:1::2","2a0d:2a00:2::2"); Cat="security" },
+    @{ Name="Comodo Secure"; IPv4=@("8.26.56.26","8.20.247.20"); IPv6=@(); Cat="security" },
+    @{ Name="Neustar R&P 1"; IPv4=@("156.154.70.1","156.154.71.1"); IPv6=@("2610:a1:1018::1","2610:a1:1019::1"); Cat="general" },
+    @{ Name="Neustar R&P 2"; IPv4=@("156.154.70.5","156.154.71.5"); IPv6=@("2610:a1:1018::5","2610:a1:1019::5"); Cat="general" },
+    @{ Name="Neustar Threat"; IPv4=@("156.154.70.2","156.154.71.2"); IPv6=@("2610:a1:1018::2","2610:a1:1019::2"); Cat="security" },
+    @{ Name="Neustar Family"; IPv4=@("156.154.70.3","156.154.71.3"); IPv6=@("2610:a1:1018::3","2610:a1:1019::3"); Cat="family" },
+    @{ Name="Neustar Business"; IPv4=@("156.154.70.4","156.154.71.4"); IPv6=@("2610:a1:1018::4","2610:a1:1019::4"); Cat="security" },
+    @{ Name="Verisign"; IPv4=@("64.6.64.6","64.6.65.6"); IPv6=@("2620:74:1b::1:1","2620:74:1c::2:2"); Cat="general" },
+    @{ Name="Level3"; IPv4=@("4.2.2.1","4.2.2.2"); IPv6=@(); Cat="general" },
+    @{ Name="SWITCH"; IPv4=@("130.59.31.248"); IPv6=@("2001:620:0:ff::2"); Cat="privacy" },
+    @{ Name="Dyn"; IPv4=@("216.146.35.35","216.146.36.36"); IPv6=@(); Cat="general" },
+    @{ Name="DNS.WATCH"; IPv4=@("84.200.69.80","84.200.70.40"); IPv6=@("2001:1608:10:25::1c04:b12f","2001:1608:10:25::9249:d69b"); Cat="privacy" },
+    @{ Name="SkyDNS"; IPv4=@("193.58.251.251"); IPv6=@(); Cat="security" },
+    @{ Name="Comss.ru West"; IPv4=@("92.38.152.163","93.115.24.204"); IPv6=@("2a03:90c0:56::1a5","2a02:7b40:5eb0:e95d::1"); Cat="adblock" },
+    @{ Name="Comss.ru East"; IPv4=@("92.223.109.31","91.230.211.67"); IPv6=@("2a03:90c0:b5::1a","2a04:2fc0:39::47"); Cat="adblock" },
+    @{ Name="SafeDNS"; IPv4=@("195.46.39.39","195.46.39.40"); IPv6=@(); Cat="security" },
+    @{ Name="CIRA Private"; IPv4=@("149.112.121.10","149.112.122.10"); IPv6=@("2620:10A:80BB::10","2620:10A:80BC::10"); Cat="privacy" },
+    @{ Name="CIRA Protected"; IPv4=@("149.112.121.20","149.112.122.20"); IPv6=@("2620:10A:80BB::20","2620:10A:80BC::20"); Cat="security" },
+    @{ Name="CIRA Family"; IPv4=@("149.112.121.30","149.112.122.30"); IPv6=@("2620:10A:80BB::30","2620:10A:80BC::30"); Cat="family" },
+    @{ Name="OpenNIC"; IPv4=@("185.121.177.177","169.239.202.202"); IPv6=@("2a05:dfc7:5::53","2a05:dfc7:5353::53"); Cat="privacy" },
+    @{ Name="DNS for Family"; IPv4=@("94.130.180.225","78.47.64.161"); IPv6=@("2a01:4f8:1c0c:40db::1","2a01:4f8:1c17:4df8::1"); Cat="family" },
+    @{ Name="CZ.NIC ODVR"; IPv4=@("193.17.47.1","185.43.135.1"); IPv6=@("2001:148f:ffff::1","2001:148f:fffe::1"); Cat="privacy" },
+    @{ Name="AliDNS"; IPv4=@("223.5.5.5","223.6.6.6"); IPv6=@("2400:3200::1","2400:3200:baba::1"); Cat="general" },
+    @{ Name="CFIEC"; IPv4=@(); IPv6=@("240C::6666","240C::6644"); Cat="general" },
+    @{ Name="Nawala"; IPv4=@("180.131.144.144","180.131.145.145"); IPv6=@(); Cat="family" },
+    @{ Name="DNSCEPAT Asia"; IPv4=@("172.105.216.54"); IPv6=@("2400:8902::f03c:92ff:fe09:48cc"); Cat="security" },
+    @{ Name="DNSCEPAT Europe"; IPv4=@("5.2.75.231"); IPv6=@("2a04:52c0:101:98d::"); Cat="security" },
+    @{ Name="360 Secure"; IPv4=@("101.226.4.6","218.30.118.6"); IPv6=@(); Cat="security" },
+    @{ Name="DNSPod"; IPv4=@("119.29.29.29","119.28.28.28"); IPv6=@(); Cat="general" },
+    @{ Name="114DNS"; IPv4=@("114.114.114.114","114.114.115.115"); IPv6=@(); Cat="general" },
+    @{ Name="Quad101"; IPv4=@("101.101.101.101","101.102.103.104"); IPv6=@("2001:de4::101","2001:de4::102"); Cat="privacy" },
+    @{ Name="OneDNS Pure"; IPv4=@("117.50.10.10","52.80.52.52"); IPv6=@(); Cat="general" },
+    @{ Name="OneDNS Block"; IPv4=@("117.50.11.11","52.80.66.66"); IPv6=@(); Cat="adblock" },
+    @{ Name="Privacy-First SG"; IPv4=@("174.138.21.128"); IPv6=@("2400:6180:0:d0::5f6e:4001"); Cat="privacy" },
+    @{ Name="Privacy-First JP"; IPv4=@("172.104.93.80"); IPv6=@("2400:8902::f03c:91ff:feda:c514"); Cat="privacy" },
+    @{ Name="FreeDNS"; IPv4=@("172.104.237.57","172.104.49.100"); IPv6=@(); Cat="general" },
+    @{ Name="Freenom World"; IPv4=@("80.80.80.80","80.80.81.81"); IPv6=@(); Cat="privacy" },
+    @{ Name="OSZX"; IPv4=@("51.38.83.141"); IPv6=@("2001:41d0:801:2000::d64"); Cat="adblock" },
+    @{ Name="PumpleX"; IPv4=@("51.38.82.198"); IPv6=@("2001:41d0:801:2000::1b28"); Cat="privacy" },
+    @{ Name="Strongarm"; IPv4=@("54.174.40.213","52.3.100.184"); IPv6=@(); Cat="security" },
+    @{ Name="SafeSurfer"; IPv4=@("104.155.237.225","104.197.28.121"); IPv6=@(); Cat="family" },
+    @{ Name="DNS.SB"; IPv4=@("185.222.222.222","45.11.45.11"); IPv6=@("2a09::","2a11::"); Cat="privacy" },
+    @{ Name="DNS Forge"; IPv4=@("176.9.93.198","176.9.1.117"); IPv6=@("2a01:4f8:151:34aa::198","2a01:4f8:141:316d::117"); Cat="adblock" },
+    @{ Name="LibreDNS"; IPv4=@("88.198.92.222"); IPv6=@(); Cat="privacy" },
+    @{ Name="AhaDNS NL"; IPv4=@("5.2.75.75"); IPv6=@("2a04:52c0:101:75::75"); Cat="adblock" },
+    @{ Name="AhaDNS India"; IPv4=@("45.79.120.233"); IPv6=@("2400:8904:e001:43::43"); Cat="adblock" },
+    @{ Name="AhaDNS LA"; IPv4=@("45.67.219.208"); IPv6=@("2a04:bdc7:100:70::70"); Cat="adblock" },
+    @{ Name="AhaDNS NY"; IPv4=@("185.213.26.187"); IPv6=@("2a0d:5600:33:3::3"); Cat="adblock" },
+    @{ Name="Seby"; IPv4=@("45.76.113.31"); IPv6=@(); Cat="privacy" },
+    @{ Name="puntCAT"; IPv4=@("109.69.8.51"); IPv6=@("2a00:1508:0:4::9"); Cat="privacy" },
+    @{ Name="DNSlify"; IPv4=@("185.235.81.1","185.235.81.2"); IPv6=@("2a0d:4d00:81::1","2a0d:4d00:81::2"); Cat="general" },
+    @{ Name="NextDNS"; IPv4=@("45.90.28.0","45.90.30.0"); IPv6=@(); Cat="general" },
+    @{ Name="ControlD"; IPv4=@("76.76.2.0","76.76.10.0"); IPv6=@(); Cat="security" },
+    @{ Name="Mullvad"; IPv4=@("194.242.2.2"); IPv6=@(); Cat="privacy" },
+    @{ Name="DNS0.eu"; IPv4=@("193.110.81.0","185.253.5.0"); IPv6=@(); Cat="security" }
 )
+
+# ── Category Definitions ─────────────────────────────────────────────────────
+$CategoryMap = [ordered]@{
+    "privacy"  = "Privacy-Focused / No-Log"
+    "general"  = "General Purpose (Unfiltered)"
+    "security" = "Security / Malware Blocking"
+    "adblock"  = "Ad & Tracker Blocking"
+    "family"   = "Family / Content Filtering"
+}
+$CategoryDescs = @{
+    "privacy"  = "Minimal or zero query logging"
+    "general"  = "Fast, reliable, no content blocking"
+    "security" = "Blocks malicious domains & phishing"
+    "adblock"  = "Strips ads and trackers"
+    "family"   = "Blocks adult content & more"
+}
+
+# ── Category Selection ────────────────────────────────────────────────────────
+$selectedCategory = $Category
+if ($All) { $selectedCategory = "all" }
+
+if (-not $selectedCategory -and [Environment]::UserInteractive) {
+    Write-Host "  ${BLD}${CYN}> SELECT PROVIDER CATEGORIES${RST}"
+    Write-Host "  ${DKGRY}$('=' * 60)${RST}"
+    Write-Host ""
+    Write-Host "  ${GRY}Enter numbers separated by spaces, or press ${BLD}Enter${RST}${GRY} for all:${RST}"
+    Write-Host ""
+
+    $num = 1
+    foreach ($key in $CategoryMap.Keys) {
+        $count = ($AllProviders | Where-Object { $_.Cat -eq $key }).Count
+        Write-Host ("    ${BLD}${WHT}{0}${RST}  {1,-35} ${GRY}({2} providers)${RST}" -f $num, $CategoryMap[$key], $count)
+        Write-Host "       ${DIM}${GRY}$($CategoryDescs[$key])${RST}"
+        $num++
+    }
+    Write-Host ""
+    $input_val = Read-Host "  ${BLD}${CYN}>${RST} ${BLD}Choice [1-5, or Enter=all]"
+
+    if ([string]::IsNullOrWhiteSpace($input_val)) {
+        $selectedCategory = "all"
+    } else {
+        $cats = @()
+        $keys = @($CategoryMap.Keys)
+        foreach ($n in ($input_val -split '\s+')) {
+            if ($n -match '^[1-5]$') {
+                $cats += $keys[[int]$n - 1]
+            }
+        }
+        $selectedCategory = if ($cats.Count -gt 0) { $cats -join "," } else { "all" }
+    }
+    Write-Host ""
+}
+if (-not $selectedCategory) { $selectedCategory = "all" }
+
+# Filter providers
+if ($selectedCategory -eq "all") {
+    $Providers = $AllProviders
+    $CategoryLabel = "All categories"
+} else {
+    $selCats = $selectedCategory -split ","
+    $Providers = $AllProviders | Where-Object { $selCats -contains $_.Cat }
+    $labels = $selCats | ForEach-Object { $CategoryMap[$_] } | Where-Object { $_ }
+    $CategoryLabel = $labels -join ", "
+}
+
+if ($Providers.Count -eq 0) {
+    Write-Host "${RED}No providers matched the selected categories.${RST}"
+    exit 1
+}
 
 # ── IPv6 Detection ────────────────────────────────────────────────────────────
 $HasIPv6 = $false
@@ -273,7 +348,7 @@ Write-Host ""
 
 $providerCount = $Providers.Count
 Write-Host "  ${GRY}Testing ${BLD}${WHT}${providerCount}${RST}${GRY} providers across ${BLD}${WHT}$($Domains.Count)${RST}${GRY} domains (${Queries} queries each)${RST}"
-Write-Host "  ${GRY}Timeout: ${Timeout}s | Parallel jobs: ${Jobs}${RST}"
+Write-Host "  ${GRY}Timeout: ${Timeout}s | Parallel jobs: ${Jobs} | ${BLD}${WHT}${CategoryLabel}${RST}"
 Write-Host ""
 
 # Run benchmarks with parallel jobs

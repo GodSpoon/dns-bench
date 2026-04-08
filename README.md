@@ -24,9 +24,33 @@ Benchmarks **72 public DNS providers** (from the [AdGuard Known DNS Providers](h
 
 - **IPv4 & IPv6**: Automatically detects IPv6 connectivity and benchmarks both protocols
 - **DNS Configuration**: Shows the exact IPv4/IPv6 addresses to enter in your network settings for each top performer
+- **Category Filtering**: Choose which types of DNS providers to benchmark (or test all)
 - **Cross-platform**: Works on macOS, Linux, and Windows (PowerShell)
 
-**Tested providers include:** AdGuard, Cloudflare, Google, Quad9, OpenDNS, NextDNS, CleanBrowsing, Neustar, Verisign, Yandex, CIRA, CZ.NIC, AliDNS, DNS.SB, DNS Forge, and [many more](https://adguard-dns.io/kb/general/dns-providers/).
+## Provider Categories
+
+An interactive menu lets you pick one or more categories before benchmarking. Default is **all**.
+
+| # | Category | Description |
+|---|----------|-------------|
+| 1 | **Privacy-Focused / No-Log** | Minimal or zero query logging — DNS.SB, Mullvad, DNS.WATCH, CIRA Private, Freenom World, and more |
+| 2 | **General Purpose (Unfiltered)** | Fast, reliable, no content blocking — Google, Cloudflare, Yandex Basic, AliDNS, DNSPod, Level3, Dyn, and more |
+| 3 | **Security / Malware Blocking** | Blocks malicious domains & phishing — Quad9, Cloudflare Malware, OpenDNS, Comodo Secure, ControlD, CleanBrowsing Security, and more |
+| 4 | **Ad & Tracker Blocking** | Strips ads and trackers — AdGuard Default, AhaDNS, OSZX, DNS Forge, Comss.ru, and more |
+| 5 | **Family / Content Filtering** | Blocks adult content & more — AdGuard Family, OpenDNS FamilyShield, CleanBrowsing Family, Cloudflare Family, and more |
+
+You can also skip the menu with CLI flags:
+
+```sh
+# Test all providers (skip menu)
+bash dns-bench.sh --all
+
+# Test only privacy-focused resolvers
+bash dns-bench.sh --category privacy
+
+# Test security + ad-blocking providers
+bash dns-bench.sh --category security,adblock
+```
 
 ## Options
 
@@ -37,6 +61,9 @@ Benchmarks **72 public DNS providers** (from the [AdGuard Known DNS Providers](h
 -d, --domains FILE   Custom domains file (one per line)
 -t, --timeout N      Query timeout in seconds (default: 2)
 -j, --jobs N         Parallel jobs (default: 10)
+-c, --category LIST  Comma-separated category filter (default: interactive menu)
+                     Categories: privacy, general, security, adblock, family
+-a, --all            Benchmark all providers, skip category menu
     --no-color       Disable colored output
 -h, --help           Show help
 ```
@@ -47,6 +74,9 @@ Benchmarks **72 public DNS providers** (from the [AdGuard Known DNS Providers](h
 -Queries N           Queries per domain per server (default: 3)
 -Timeout N           Query timeout in seconds (default: 2)
 -Jobs N              Parallel jobs (default: 10)
+-Category LIST       Comma-separated category filter (default: interactive menu)
+                     Categories: privacy, general, security, adblock, family
+-All                 Benchmark all providers, skip category menu
 -NoColor             Disable colored output
 -Help                Show help
 ```
@@ -54,17 +84,26 @@ Benchmarks **72 public DNS providers** (from the [AdGuard Known DNS Providers](h
 **Examples:**
 
 ```sh
-# Run with defaults
+# Run with interactive category menu (default)
 bash dns-bench.sh
 
-# More thorough test
-bash dns-bench.sh -q 5 -t 3
+# Benchmark all providers
+bash dns-bench.sh --all
+
+# Only privacy-focused resolvers
+bash dns-bench.sh --category privacy
+
+# More thorough test, family category only
+bash dns-bench.sh -q 5 -t 3 --category family
 
 # Custom domains
 bash dns-bench.sh -d my-domains.txt
 
-# Windows PowerShell
-.\dns-bench.ps1 -Queries 5 -Timeout 3
+# Windows PowerShell — all providers
+.\dns-bench.ps1 -All
+
+# Windows PowerShell — security category
+.\dns-bench.ps1 -Category security
 ```
 
 ## Requirements
