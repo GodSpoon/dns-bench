@@ -207,7 +207,8 @@ install_deps() {
 # ── IPv6 Connectivity Check ──────────────────────────────────────────────────
 HAS_IPV6=false
 check_ipv6() {
-  # Try a quick DNS query over IPv6 to Google's public DNS
+  # Test actual IPv6 DNS connectivity by querying Google's IPv6 DNS server.
+  # This confirms both IPv6 network connectivity and DNS-over-IPv6 functionality.
   if dig +time=1 +tries=1 @2001:4860:4860::8888 google.com A >/dev/null 2>&1; then
     HAS_IPV6=true
   fi
