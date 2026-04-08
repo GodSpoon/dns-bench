@@ -193,7 +193,8 @@ if (-not $selectedCategory -and [Environment]::UserInteractive) {
         $num++
     }
     Write-Host ""
-    $input_val = Read-Host "  ${BLD}${CYN}>${RST} ${BLD}Choice [1-5, or Enter=all]"
+    $maxCat = $CategoryMap.Count
+    $input_val = Read-Host "  ${BLD}${CYN}>${RST} ${BLD}Choice [1-${maxCat}, or Enter=all]"
 
     if ([string]::IsNullOrWhiteSpace($input_val)) {
         $selectedCategory = "all"
@@ -201,7 +202,7 @@ if (-not $selectedCategory -and [Environment]::UserInteractive) {
         $cats = @()
         $keys = @($CategoryMap.Keys)
         foreach ($n in ($input_val -split '\s+')) {
-            if ($n -match '^[1-5]$') {
+            if ($n -match '^\d+$' -and [int]$n -ge 1 -and [int]$n -le $maxCat) {
                 $cats += $keys[[int]$n - 1]
             }
         }

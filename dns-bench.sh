@@ -215,8 +215,9 @@ install_deps() {
 # ── IPv6 Connectivity Check ──────────────────────────────────────────────────
 HAS_IPV6=false
 check_ipv6() {
-  # Test actual IPv6 DNS connectivity by querying Google's IPv6 DNS server.
-  # This confirms both IPv6 network connectivity and DNS-over-IPv6 functionality.
+  # Test IPv6 connectivity by sending a DNS query to Google's IPv6 DNS server.
+  # We query an A record (not AAAA) because we only care whether the IPv6
+  # transport to the server works, not the record type returned.
   if dig +time=1 +tries=1 @2001:4860:4860::8888 google.com A >/dev/null 2>&1; then
     HAS_IPV6=true
   fi
@@ -425,7 +426,7 @@ show_category_menu() {
   done
 
   echo
-  printf "  ${BLD}${CYN}${ARROW}${RST} ${BLD}Choice [1-5, or Enter=all]: ${RST}"
+  printf "  ${BLD}${CYN}${ARROW}${RST} ${BLD}Choice [1-${#CATEGORY_KEYS[@]}, or Enter=all]: ${RST}"
 
   local input
   read -r input </dev/tty
@@ -434,8 +435,9 @@ show_category_menu() {
     CATEGORY="all"
   else
     CATEGORY=""
+    local max_cat=${#CATEGORY_KEYS[@]}
     for num in $input; do
-      if [[ "$num" =~ ^[1-5]$ ]]; then
+      if [[ "$num" =~ ^[0-9]+$ ]] && (( num >= 1 && num <= max_cat )); then
         local idx=$((num - 1))
         if [[ -n "$CATEGORY" ]]; then
           CATEGORY="${CATEGORY},${CATEGORY_KEYS[$idx]}"
